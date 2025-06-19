@@ -1,6 +1,5 @@
 import discord
 import os
-import openai
 import requests
 from dotenv import load_dotenv
 
