@@ -3,11 +3,19 @@ import os
 import requests
 from dotenv import load_dotenv
 
+# Load .env vars (works locally — on Railway, it pulls from Variables tab)
 load_dotenv()
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
+# Check for missing tokens
+if not TOKEN:
+    raise ValueError("DISCORD_TOKEN is not set! Add it to Railway variables.")
+if not OPENROUTER_API_KEY:
+    raise ValueError("OPENROUTER_API_KEY is not set! Add it to Railway variables.")
+
+# Setup Discord bot
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 tree = discord.app_commands.CommandTree(client)
@@ -15,7 +23,7 @@ tree = discord.app_commands.CommandTree(client)
 @client.event
 async def on_ready():
     await tree.sync()
-    print(f"Logged in as {client.user}")
+    print(f"🌈 Logged in as {client.user} and slash commands synced!")
 
 @tree.command(name="minx_muse", description="Generate a concise, vivid character prompt from your idea.")
 async def minx_muse(interaction: discord.Interaction, idea: str):
@@ -42,24 +50,32 @@ async def minx_muse(interaction: discord.Interaction, idea: str):
         "X-Title": "Minx Muse Bot"
     }
 
-    response = requests.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        headers=headers,
-        json={
-            "model": "qwen/qwen3-30b-a3b:free",
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Prompt idea: {idea}"}
-            ],
-            "temperature": 1.0,
-            "max_tokens": 150
-        }
-    )
+    try:
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers=headers,
+            json={
+                "model": "qwen/qwen3-30b-a3b:free",
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"Prompt idea: {idea}"}
+                ],
+                "temperature": 1.0,
+                "max_tokens": 150
+            }
+        )
 
-    if response.status_code == 200:
-        prompt = response.json()["choices"][0]["message"]["content"]
+        print("🔍 RAW RESPONSE:", response.text)
+
+        # Check if DeepSeek gave us a prompt
+        prompt = response.json()["choices"][0]["message"]["content"].strip()
+        if not prompt:
+            raise ValueError("Empty prompt returned.")
+
         await interaction.followup.send(prompt)
-    else:
-        await interaction.followup.send("Muse is pouting. Something broke.")
+
+    except Exception as e:
+        print("💥 ERROR:", e)
+        await interaction.followup.send("⚠️ The Muse got tongue-tied. Try again in a bit!")
 
 client.run(TOKEN)
