@@ -138,6 +138,14 @@ async def minx_muse(
         # Split prompts by newlines and clean them
         prompts = [p.strip() for p in raw_prompts.split('\n') if p.strip()]
         
+        # Clean any existing MJ parameters from LLM output to avoid duplication
+        cleaned_prompts = []
+        for prompt in prompts:
+            # Remove any --param value patterns that the LLM might have included
+            cleaned_prompt = re.sub(r'\s*--\w+\s+[^\s--]+', '', prompt).strip()
+            cleaned_prompts.append(cleaned_prompt)
+        prompts = cleaned_prompts
+        
         # Build Midjourney parameters (manual overrides Discord parameters)
         mj_params = []
         
