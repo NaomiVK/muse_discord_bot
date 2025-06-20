@@ -30,7 +30,7 @@ async def minx_muse(interaction: discord.Interaction, idea: str):
     await interaction.response.defer(thinking=True)
     
     system_prompt = (
-        "You are a prompt generator. Create a vivid, single-sentence character prompt "
+        "You are a prompt generator. Create a vivid, single-sentence character prompt. Do not reason. Do not add any thinking."
         "based on user input, following this structure:\n"
         "1. Subject (human or anthropomorphic)\n"
         "2. Role or Function\n"
@@ -55,13 +55,13 @@ async def minx_muse(interaction: discord.Interaction, idea: str):
             "https://openrouter.ai/api/v1/chat/completions",
             headers=headers,
             json={
-                "model": "deepseek/deepseek-r1-0528-qwen3-8b:free",
+                "model": "qwen/qwen3-30b-a3b:free",
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"Prompt idea: {idea}"}
                 ],
                 "temperature": 1.0,
-                "max_tokens": 150
+                "max_tokens": 200
             }
         )
         
