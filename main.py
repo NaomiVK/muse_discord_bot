@@ -59,6 +59,28 @@ async def minx_muse(
 
     await interaction.response.defer(thinking=True)
     
+    # Parse manual Midjourney parameters from the idea text first
+    import re
+    manual_params = {}
+    idea_clean = idea  # Initialize with original idea as fallback
+    
+    try:
+        # Extract manual parameters (--param value format)
+        param_pattern = r'--(\w+)\s+([^\s--]+)'
+        matches = re.findall(param_pattern, idea)
+        for param, value in matches:
+            manual_params[param] = value
+        
+        # Remove manual parameters from the idea for cleaner prompt generation
+        idea_clean = re.sub(r'--\w+\s+[^\s--]+', '', idea).strip()
+        if not idea_clean:  # If idea becomes empty after removing params
+            idea_clean = idea  # Use original idea
+    except Exception as e:
+        print(f"⚠️ Error parsing manual parameters: {e}")
+        # Fall back to original idea if parsing fails
+        idea_clean = idea
+        manual_params = {}
+    
     system_prompt = (
         "You are a prompt generator. Create vivid, single-sentence character prompts. Do not reason. Do not add any thinking. "
         "Each prompt should follow this structure:\n"
@@ -115,20 +137,6 @@ async def minx_muse(
         
         # Split prompts by newlines and clean them
         prompts = [p.strip() for p in raw_prompts.split('\n') if p.strip()]
-        
-        # Parse manual Midjourney parameters from the idea text
-        import re
-        manual_params = {}
-        idea_clean = idea
-        
-        # Extract manual parameters (--param value format)
-        param_pattern = r'--(\w+)\s+([^\s--]+)'
-        matches = re.findall(param_pattern, idea)
-        for param, value in matches:
-            manual_params[param] = value
-        
-        # Remove manual parameters from the idea for cleaner prompt generation
-        idea_clean = re.sub(r'--\w+\s+[^\s--]+', '', idea).strip()
         
         # Build Midjourney parameters (manual overrides Discord parameters)
         mj_params = []
