@@ -55,7 +55,7 @@ async def minx_muse(interaction: discord.Interaction, idea: str):
             "https://openrouter.ai/api/v1/chat/completions",
             headers=headers,
             json={
-                "model": "qwen/qwen3-30b-a3b:free",
+                "model": "meta-llama/llama-3.3-8b-instruct:free",
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"Prompt idea: {idea}"}
