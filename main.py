@@ -142,7 +142,7 @@ async def minx_muse(
         cleaned_prompts = []
         for prompt in prompts:
             # Remove any --param value patterns that the LLM might have included
-            cleaned_prompt = re.sub(r'\s*--\w+\s+[^\s--]+', '', prompt).strip()
+            cleaned_prompt = re.sub(r'\s*--\w+\s+[^\s-]+(?:\s|$)', '', prompt).strip()
             cleaned_prompts.append(cleaned_prompt)
         prompts = cleaned_prompts
         
