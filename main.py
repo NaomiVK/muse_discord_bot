@@ -104,7 +104,7 @@ async def minx_muse(
     }
     
     try:
-        user_message = f"Generate {count} unique prompt{'s' if count > 1 else ''} based on this idea: {idea_clean}"
+        user_message = f"Generate {count} unique prompt{'s' if count > 1 else ''} based on this idea: {idea}"
         
         response = requests.post(
             "https://openrouter.ai/api/v1/chat/completions",
