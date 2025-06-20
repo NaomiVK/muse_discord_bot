@@ -29,57 +29,14 @@ async def minx_muse(
     interaction: discord.Interaction, 
     idea: str,
     count: int = 1,
-    style_ref: str = None,
-    character_ref: str = None,
-    aspect_ratio: str = None,
-    stylize: int = None,
-    chaos: int = None,
-    quality: str = None
+    mjparameters: str = None
 ):
     # Validate inputs
     if count < 1 or count > 5:
         await interaction.response.send_message("⚠️ Count must be between 1 and 5 prompts.", ephemeral=True)
         return
-    
-    if aspect_ratio and aspect_ratio not in ["1:1", "16:9", "9:16", "4:3", "3:4", "2:3", "3:2"]:
-        await interaction.response.send_message("⚠️ Invalid aspect ratio. Use: 1:1, 16:9, 9:16, 4:3, 3:4, 2:3, or 3:2", ephemeral=True)
-        return
-    
-    if stylize and (stylize < 0 or stylize > 1000):
-        await interaction.response.send_message("⚠️ Stylize must be between 0 and 1000.", ephemeral=True)
-        return
-    
-    if chaos and (chaos < 0 or chaos > 100):
-        await interaction.response.send_message("⚠️ Chaos must be between 0 and 100.", ephemeral=True)
-        return
-    
-    if quality and quality not in ["0.25", "0.5", "1", "2"]:
-        await interaction.response.send_message("⚠️ Quality must be: 0.25, 0.5, 1, or 2", ephemeral=True)
-        return
 
     await interaction.response.defer(thinking=True)
-    
-    # Parse manual Midjourney parameters from the idea text first
-    import re
-    manual_params = {}
-    idea_clean = idea  # Initialize with original idea as fallback
-    
-    try:
-        # Extract manual parameters (--param value format)
-        param_pattern = r'--(\w+)\s+([^\s--]+)'
-        matches = re.findall(param_pattern, idea)
-        for param, value in matches:
-            manual_params[param] = value
-        
-        # Remove manual parameters from the idea for cleaner prompt generation
-        idea_clean = re.sub(r'--\w+\s+[^\s--]+', '', idea).strip()
-        if not idea_clean:  # If idea becomes empty after removing params
-            idea_clean = idea  # Use original idea
-    except Exception as e:
-        print(f"⚠️ Error parsing manual parameters: {e}")
-        # Fall back to original idea if parsing fails
-        idea_clean = idea
-        manual_params = {}
     
     system_prompt = (
         "You are a prompt generator. Create vivid, single-sentence character prompts. Do not reason. Do not add any thinking. "
@@ -94,7 +51,7 @@ async def minx_muse(
         "\"Cybernetic samurai dressed in sleek armor, with neon accents, gripping a glowing katana, "
         "amid a bustling futuristic cityscape with neon lights and digital rain. High detail with metallic textures and luminous patterns.\"\n\n"
         "Generate unique variations. Balance detail and creativity. Output only the prompts, separated by newlines. "
-        "Do not number them or add explanations."
+        "Do not number them or add explanations. Do not include any Midjourney parameters in your output."
     )
     
     headers = {
@@ -116,7 +73,7 @@ async def minx_muse(
                     {"role": "user", "content": user_message}
                 ],
                 "temperature": 1.0,
-                "max_tokens": 800  # Increased for multiple prompts
+                "max_tokens": 800
             }
         )
         
@@ -138,61 +95,15 @@ async def minx_muse(
         # Split prompts by newlines and clean them
         prompts = [p.strip() for p in raw_prompts.split('\n') if p.strip()]
         
-        # Clean any existing MJ parameters from LLM output to avoid duplication
-        cleaned_prompts = []
-        for prompt in prompts:
-            # Remove any --param value patterns that the LLM might have included
-            cleaned_prompt = re.sub(r'\s*--\w+\s+[^\s-]+(?:\s|$)', '', prompt).strip()
-            cleaned_prompts.append(cleaned_prompt)
-        prompts = cleaned_prompts
-        
-        # Build Midjourney parameters (manual overrides Discord parameters)
-        mj_params = []
-        
-        # Style and character refs (manual takes priority)
-        if 'sref' in manual_params:
-            mj_params.append(f"--sref {manual_params['sref']}")
-        elif style_ref:
-            mj_params.append(f"--sref {style_ref}")
-            
-        if 'cref' in manual_params:
-            mj_params.append(f"--cref {manual_params['cref']}")
-        elif character_ref:
-            mj_params.append(f"--cref {character_ref}")
-        
-        # Aspect ratio
-        if 'ar' in manual_params:
-            mj_params.append(f"--ar {manual_params['ar']}")
-        elif aspect_ratio:
-            mj_params.append(f"--ar {aspect_ratio}")
-        
-        # Stylize
-        if 'stylize' in manual_params or 's' in manual_params:
-            stylize_val = manual_params.get('stylize', manual_params.get('s'))
-            mj_params.append(f"--stylize {stylize_val}")
-        elif stylize is not None:
-            mj_params.append(f"--stylize {stylize}")
-        
-        # Chaos
-        if 'chaos' in manual_params or 'c' in manual_params:
-            chaos_val = manual_params.get('chaos', manual_params.get('c'))
-            mj_params.append(f"--chaos {chaos_val}")
-        elif chaos is not None:
-            mj_params.append(f"--chaos {chaos}")
-        
-        # Quality
-        if 'quality' in manual_params or 'q' in manual_params:
-            quality_val = manual_params.get('quality', manual_params.get('q'))
-            mj_params.append(f"--quality {quality_val}")
-        elif quality:
-            mj_params.append(f"--quality {quality}")
-        
-        # Add any other manual parameters not covered above
-        for param, value in manual_params.items():
-            if param not in ['sref', 'cref', 'ar', 'stylize', 's', 'chaos', 'c', 'quality', 'q']:
-                mj_params.append(f"--{param} {value}")
-        
-        mj_suffix = " " + " ".join(mj_params) if mj_params else ""
+        # Build the mjparameters suffix
+        mj_suffix = ""
+        if mjparameters:
+            # Clean up the mjparameters string and ensure it starts with a space
+            mjparameters = mjparameters.strip()
+            if mjparameters and not mjparameters.startswith(' '):
+                mj_suffix = " " + mjparameters
+            else:
+                mj_suffix = mjparameters
         
         # Format response
         if len(prompts) == 1:
