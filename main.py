@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 
 # Load .env vars (works locally — on Railway, it pulls from Variables tab)
 load_dotenv()
-
 TOKEN = os.getenv("DISCORD_TOKEN")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
@@ -25,13 +24,44 @@ async def on_ready():
     await tree.sync()
     print(f"🌈 Logged in as {client.user} and slash commands synced!")
 
-@tree.command(name="minx_muse", description="Generate a concise, vivid character prompt from your idea.")
-async def minx_muse(interaction: discord.Interaction, idea: str):
+@tree.command(name="minx_muse", description="Generate multiple vivid character prompts with optional Midjourney parameters.")
+async def minx_muse(
+    interaction: discord.Interaction, 
+    idea: str,
+    count: int = 1,
+    style_ref: str = None,
+    character_ref: str = None,
+    aspect_ratio: str = None,
+    stylize: int = None,
+    chaos: int = None,
+    quality: str = None
+):
+    # Validate inputs
+    if count < 1 or count > 5:
+        await interaction.response.send_message("⚠️ Count must be between 1 and 5 prompts.", ephemeral=True)
+        return
+    
+    if aspect_ratio and aspect_ratio not in ["1:1", "16:9", "9:16", "4:3", "3:4", "2:3", "3:2"]:
+        await interaction.response.send_message("⚠️ Invalid aspect ratio. Use: 1:1, 16:9, 9:16, 4:3, 3:4, 2:3, or 3:2", ephemeral=True)
+        return
+    
+    if stylize and (stylize < 0 or stylize > 1000):
+        await interaction.response.send_message("⚠️ Stylize must be between 0 and 1000.", ephemeral=True)
+        return
+    
+    if chaos and (chaos < 0 or chaos > 100):
+        await interaction.response.send_message("⚠️ Chaos must be between 0 and 100.", ephemeral=True)
+        return
+    
+    if quality and quality not in ["0.25", "0.5", "1", "2"]:
+        await interaction.response.send_message("⚠️ Quality must be: 0.25, 0.5, 1, or 2", ephemeral=True)
+        return
+
     await interaction.response.defer(thinking=True)
     
     system_prompt = (
-        "You are a prompt generator. Create a vivid, single-sentence character prompt. Do not reason. Do not add any thinking."
-        "based on user input, following this structure:\n"
+        "You are a prompt generator. Create vivid, single-sentence character prompts. Do not reason. Do not add any thinking. "
+        "Each prompt should follow this structure:\n"
         "1. Subject (human or anthropomorphic)\n"
         "2. Role or Function\n"
         "3. Physical Attributes\n"
@@ -41,7 +71,8 @@ async def minx_muse(interaction: discord.Interaction, idea: str):
         "Example: "
         "\"Cybernetic samurai dressed in sleek armor, with neon accents, gripping a glowing katana, "
         "amid a bustling futuristic cityscape with neon lights and digital rain. High detail with metallic textures and luminous patterns.\"\n\n"
-        "Balance detail and creativity. Output a single sentence prompt. Do not explain or repeat structure."
+        "Generate unique variations. Balance detail and creativity. Output only the prompts, separated by newlines. "
+        "Do not number them or add explanations."
     )
     
     headers = {
@@ -51,6 +82,8 @@ async def minx_muse(interaction: discord.Interaction, idea: str):
     }
     
     try:
+        user_message = f"Generate {count} unique prompt{'s' if count > 1 else ''} based on this idea: {idea_clean}"
+        
         response = requests.post(
             "https://openrouter.ai/api/v1/chat/completions",
             headers=headers,
@@ -58,10 +91,10 @@ async def minx_muse(interaction: discord.Interaction, idea: str):
                 "model": "meta-llama/llama-3.3-8b-instruct:free",
                 "messages": [
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"Prompt idea: {idea}"}
+                    {"role": "user", "content": user_message}
                 ],
                 "temperature": 1.0,
-                "max_tokens": 200
+                "max_tokens": 800  # Increased for multiple prompts
             }
         )
         
@@ -76,11 +109,107 @@ async def minx_muse(interaction: discord.Interaction, idea: str):
         if "choices" not in json_data:
             raise Exception("No 'choices' in response.")
         
-        prompt = json_data["choices"][0]["message"]["content"].strip()
-        if not prompt:
+        raw_prompts = json_data["choices"][0]["message"]["content"].strip()
+        if not raw_prompts:
             raise Exception("Empty prompt returned.")
         
-        await interaction.followup.send(prompt)
+        # Split prompts by newlines and clean them
+        prompts = [p.strip() for p in raw_prompts.split('\n') if p.strip()]
+        
+        # Parse manual Midjourney parameters from the idea text
+        import re
+        manual_params = {}
+        idea_clean = idea
+        
+        # Extract manual parameters (--param value format)
+        param_pattern = r'--(\w+)\s+([^\s--]+)'
+        matches = re.findall(param_pattern, idea)
+        for param, value in matches:
+            manual_params[param] = value
+        
+        # Remove manual parameters from the idea for cleaner prompt generation
+        idea_clean = re.sub(r'--\w+\s+[^\s--]+', '', idea).strip()
+        
+        # Build Midjourney parameters (manual overrides Discord parameters)
+        mj_params = []
+        
+        # Style and character refs (manual takes priority)
+        if 'sref' in manual_params:
+            mj_params.append(f"--sref {manual_params['sref']}")
+        elif style_ref:
+            mj_params.append(f"--sref {style_ref}")
+            
+        if 'cref' in manual_params:
+            mj_params.append(f"--cref {manual_params['cref']}")
+        elif character_ref:
+            mj_params.append(f"--cref {character_ref}")
+        
+        # Aspect ratio
+        if 'ar' in manual_params:
+            mj_params.append(f"--ar {manual_params['ar']}")
+        elif aspect_ratio:
+            mj_params.append(f"--ar {aspect_ratio}")
+        
+        # Stylize
+        if 'stylize' in manual_params or 's' in manual_params:
+            stylize_val = manual_params.get('stylize', manual_params.get('s'))
+            mj_params.append(f"--stylize {stylize_val}")
+        elif stylize is not None:
+            mj_params.append(f"--stylize {stylize}")
+        
+        # Chaos
+        if 'chaos' in manual_params or 'c' in manual_params:
+            chaos_val = manual_params.get('chaos', manual_params.get('c'))
+            mj_params.append(f"--chaos {chaos_val}")
+        elif chaos is not None:
+            mj_params.append(f"--chaos {chaos}")
+        
+        # Quality
+        if 'quality' in manual_params or 'q' in manual_params:
+            quality_val = manual_params.get('quality', manual_params.get('q'))
+            mj_params.append(f"--quality {quality_val}")
+        elif quality:
+            mj_params.append(f"--quality {quality}")
+        
+        # Add any other manual parameters not covered above
+        for param, value in manual_params.items():
+            if param not in ['sref', 'cref', 'ar', 'stylize', 's', 'chaos', 'c', 'quality', 'q']:
+                mj_params.append(f"--{param} {value}")
+        
+        mj_suffix = " " + " ".join(mj_params) if mj_params else ""
+        
+        # Format response
+        if len(prompts) == 1:
+            final_message = f"**🎨 Generated Prompt:**\n```{prompts[0]}{mj_suffix}```"
+        else:
+            formatted_prompts = []
+            for i, prompt in enumerate(prompts[:count], 1):  # Limit to requested count
+                formatted_prompts.append(f"**Prompt {i}:**\n```{prompt}{mj_suffix}```")
+            final_message = f"**🎨 Generated {len(formatted_prompts)} Prompts:**\n\n" + "\n\n".join(formatted_prompts)
+        
+        # Check Discord message length limit (2000 characters)
+        if len(final_message) > 2000:
+            # Split into multiple messages if too long
+            messages_to_send = []
+            current_message = "**🎨 Generated Prompts:**\n\n"
+            
+            for i, prompt in enumerate(prompts[:count], 1):
+                prompt_text = f"**Prompt {i}:**\n```{prompt}{mj_suffix}```\n\n"
+                if len(current_message + prompt_text) > 2000:
+                    messages_to_send.append(current_message.rstrip())
+                    current_message = prompt_text
+                else:
+                    current_message += prompt_text
+            
+            if current_message.strip():
+                messages_to_send.append(current_message.rstrip())
+            
+            # Send first message as followup, rest as regular messages
+            await interaction.followup.send(messages_to_send[0])
+            for msg in messages_to_send[1:]:
+                await interaction.channel.send(msg)
+        else:
+            await interaction.followup.send(final_message)
         
     except Exception as e:
         print("💥 ERROR:", e)
