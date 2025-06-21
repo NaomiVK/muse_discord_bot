@@ -89,7 +89,7 @@ async def minx_muse(
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers=headers,
                 json={
-                    "model": "meta-llama/llama-4-maverick-17b-128e-instruct:free",
+                    "model": "qwen/qwen-2.5-72b-instruct:free",
                     "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_message}
