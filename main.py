@@ -36,7 +36,7 @@ async def minx_muse(
     interaction: discord.Interaction, 
     idea: str,
     count: int = 1,
-    model: str = "llama-3.3-8b",
+    model: str = "gemma-3-27b",
     mjparameters: str = None
 ):
     # Validate inputs
@@ -169,9 +169,9 @@ async def model_autocomplete(
     current: str,
 ) -> list[discord.app_commands.Choice[str]]:
     return [
-        discord.app_commands.Choice(name=f"Llama 3.3 8B (Fast)", value="llama-3.3-8b"),
+        discord.app_commands.Choice(name=f"Gemma 3 27B (Balanced) - Default", value="gemma-3-27b"),
         discord.app_commands.Choice(name=f"Qwen 2.5 72B (Powerful)", value="qwen-2.5-72b"),
-        discord.app_commands.Choice(name=f"Gemma 3 27B (Balanced)", value="gemma-3-27b")
+        discord.app_commands.Choice(name=f"Llama 4 Maverick (Creative)", value="llama-4-maverick")
     ]
 
 client.run(TOKEN)
