@@ -14,6 +14,13 @@ if not TOKEN:
 if not OPENROUTER_API_KEY:
     raise ValueError("OPENROUTER_API_KEY is not set! Add it to Railway variables.")
 
+# Available models for user selection
+AVAILABLE_MODELS = {
+    "qwen-2.5-72b": "qwen/qwen-2.5-72b-instruct:free", 
+    "gemma-3-27b": "google/gemma-3-27b-it:free",    
+    "llama-3.3-8b": "meta-llama/llama-3.3-8b-instruct:free"
+}
+
 # Setup Discord bot
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
@@ -29,17 +36,22 @@ async def minx_muse(
     interaction: discord.Interaction, 
     idea: str,
     count: int = 1,
+    model: str = "llama-3.3-8b",
     mjparameters: str = None
 ):
     # Validate inputs
     if count < 1 or count > 5:
         await interaction.response.send_message("⚠️ Count must be between 1 and 5 prompts.", ephemeral=True)
         return
+    
+    if model not in AVAILABLE_MODELS:
+        await interaction.response.send_message(f"⚠️ Invalid model. Choose from: {', '.join(AVAILABLE_MODELS.keys())}", ephemeral=True)
+        return
 
     await interaction.response.defer(thinking=True)
     
     system_prompt = (
-        "You are a prompt generator. Create vivid, single-sentence character prompts. Do not reason. Do not add any thinking. "
+        "You are a prompt generator. Create vivid, single-sentence character prompts based on user input. Do not reason. Do not add any thinking. "
         "Each prompt should follow this structure:\n"
         "1. Subject (human or anthropomorphic)\n"
         "2. Role or Function\n"
@@ -62,13 +74,15 @@ async def minx_muse(
     
     try:
         user_message = f"Generate {count} unique prompt{'s' if count > 1 else ''} based on this idea: {idea}"
+        selected_model = AVAILABLE_MODELS[model]
         
-        # First attempt with primary model
+        print(f"🎯 Using model: {selected_model}")
+        
         response = requests.post(
             "https://openrouter.ai/api/v1/chat/completions",
             headers=headers,
             json={
-                "model": "meta-llama/llama-3.3-8b-instruct:free",
+                "model": selected_model,
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_message}
@@ -82,27 +96,11 @@ async def minx_muse(
         print("🧠 HEADERS:", response.headers)
         print("🔍 RAW RESPONSE:", repr(response.text))
         
-        # Check if we got a 403 error and retry with fallback model
-        if response.status_code == 403:
-            print("⚠️ 403 error encountered, switching to fallback model...")
-            response = requests.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers=headers,
-                json={
-                    "model": "qwen/qwen-2.5-72b-instruct:free",
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_message}
-                    ],
-                    "temperature": 1.0,
-                    "max_tokens": 800
-                }
-            )
-            print("🔄 FALLBACK STATUS CODE:", response.status_code)
-            print("🔄 FALLBACK RESPONSE:", repr(response.text))
-        
         if response.status_code != 200:
-            raise Exception("OpenRouter API call failed.")
+            error_msg = f"API call failed with status {response.status_code}"
+            if response.status_code == 403:
+                error_msg += f" - The {model} model may be unavailable. Try a different model."
+            raise Exception(error_msg)
         
         json_data = response.json()
         if "choices" not in json_data:
@@ -125,20 +123,22 @@ async def minx_muse(
             else:
                 mj_suffix = mjparameters
         
-        # Format response
+        # Format response with model info
+        model_info = f"*Generated using {model}*\n\n"
+        
         if len(prompts) == 1:
-            final_message = f"**🎨 Generated Prompt:**\n```{prompts[0]}{mj_suffix}```"
+            final_message = f"**🎨 Generated Prompt:**\n{model_info}```{prompts[0]}{mj_suffix}```"
         else:
             formatted_prompts = []
             for i, prompt in enumerate(prompts[:count], 1):  # Limit to requested count
                 formatted_prompts.append(f"**Prompt {i}:**\n```{prompt}{mj_suffix}```")
-            final_message = f"**🎨 Generated {len(formatted_prompts)} Prompts:**\n\n" + "\n\n".join(formatted_prompts)
+            final_message = f"**🎨 Generated {len(formatted_prompts)} Prompts:**\n{model_info}" + "\n\n".join(formatted_prompts)
         
         # Check Discord message length limit (2000 characters)
         if len(final_message) > 2000:
             # Split into multiple messages if too long
             messages_to_send = []
-            current_message = "**🎨 Generated Prompts:**\n\n"
+            current_message = f"**🎨 Generated Prompts:**\n{model_info}"
             
             for i, prompt in enumerate(prompts[:count], 1):
                 prompt_text = f"**Prompt {i}:**\n```{prompt}{mj_suffix}```\n\n"
@@ -160,6 +160,18 @@ async def minx_muse(
         
     except Exception as e:
         print("💥 ERROR:", e)
-        await interaction.followup.send("⚠️ The Muse choked on silence. Debug logs summoned.")
+        await interaction.followup.send(f"⚠️ The Muse choked on silence. Error: {str(e)}")
+
+# Add autocomplete for model selection
+@minx_muse.autocomplete('model')
+async def model_autocomplete(
+    interaction: discord.Interaction,
+    current: str,
+) -> list[discord.app_commands.Choice[str]]:
+    return [
+        discord.app_commands.Choice(name=f"Llama 3.3 8B (Fast)", value="llama-3.3-8b"),
+        discord.app_commands.Choice(name=f"Qwen 2.5 72B (Powerful)", value="qwen-2.5-72b"),
+        discord.app_commands.Choice(name=f"Gemma 3 27B (Balanced)", value="gemma-3-27b")
+    ]
 
 client.run(TOKEN)
