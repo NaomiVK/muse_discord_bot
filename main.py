@@ -18,7 +18,7 @@ if not OPENROUTER_API_KEY:
 AVAILABLE_MODELS = {
     "qwen-2.5-72b": "qwen/qwen-2.5-72b-instruct:free", 
     "gemma-3-27b": "google/gemma-3-27b-it:free",    
-    "llama-3.3-8b": "meta-llama/llama-4-maverick-17b-128e-instruct:free"
+    "llama-4-maverick": "meta-llama/llama-4-maverick-17b-128e-instruct:free"
 }
 
 # Setup Discord bot
