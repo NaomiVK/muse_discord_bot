@@ -63,6 +63,7 @@ async def minx_muse(
     try:
         user_message = f"Generate {count} unique prompt{'s' if count > 1 else ''} based on this idea: {idea}"
         
+        # First attempt with primary model
         response = requests.post(
             "https://openrouter.ai/api/v1/chat/completions",
             headers=headers,
@@ -80,6 +81,25 @@ async def minx_muse(
         print("🧠 STATUS CODE:", response.status_code)
         print("🧠 HEADERS:", response.headers)
         print("🔍 RAW RESPONSE:", repr(response.text))
+        
+        # Check if we got a 403 error and retry with fallback model
+        if response.status_code == 403:
+            print("⚠️ 403 error encountered, switching to fallback model...")
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers=headers,
+                json={
+                    "model": "meta-llama/llama-4-maverick-17b-128e-instruct:free",
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_message}
+                    ],
+                    "temperature": 1.0,
+                    "max_tokens": 800
+                }
+            )
+            print("🔄 FALLBACK STATUS CODE:", response.status_code)
+            print("🔄 FALLBACK RESPONSE:", repr(response.text))
         
         if response.status_code != 200:
             raise Exception("OpenRouter API call failed.")
