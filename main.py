@@ -21,6 +21,9 @@ AVAILABLE_MODELS = {
     "llama-4-maverick": "meta-llama/llama-4-maverick-17b-128e-instruct:free"
 }
 
+# Default fallback model
+DEFAULT_FALLBACK_MODEL = "llama-4-maverick"
+
 # Setup Discord bot
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
@@ -30,6 +33,41 @@ tree = discord.app_commands.CommandTree(client)
 async def on_ready():
     await tree.sync()
     print(f"🌈 Logged in as {client.user} and slash commands synced!")
+
+async def try_api_call(selected_model, system_prompt, user_message, headers):
+    """Try API call with the given model, return response or None if failed"""
+    try:
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers=headers,
+            json={
+                "model": selected_model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message}
+                ],
+                "temperature": 1.0,
+                "max_tokens": 800
+            }
+        )
+        
+        print(f"🧠 STATUS CODE for {selected_model}:", response.status_code)
+        print("🧠 HEADERS:", response.headers)
+        print("🔍 RAW RESPONSE:", repr(response.text))
+        
+        if response.status_code == 200:
+            json_data = response.json()
+            if "choices" in json_data and json_data["choices"]:
+                raw_prompts = json_data["choices"][0]["message"]["content"].strip()
+                if raw_prompts:
+                    return raw_prompts
+        
+        print(f"❌ Model {selected_model} failed with status {response.status_code}")
+        return None
+        
+    except Exception as e:
+        print(f"❌ Exception with model {selected_model}: {e}")
+        return None
 
 @tree.command(name="minx_muse", description="Generate multiple vivid character prompts with optional Midjourney parameters.")
 async def minx_muse(
@@ -72,44 +110,37 @@ async def minx_muse(
         "X-Title": "Minx Muse Bot"
     }
     
-    try:
-        user_message = f"Generate {count} unique prompt{'s' if count > 1 else ''} based on this idea: {idea}"
-        selected_model = AVAILABLE_MODELS[model]
-        
-        print(f"🎯 Using model: {selected_model}")
-        
-        response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers=headers,
-            json={
-                "model": selected_model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message}
-                ],
-                "temperature": 1.0,
-                "max_tokens": 800
-            }
+    user_message = f"Generate {count} unique prompt{'s' if count > 1 else ''} based on this idea: {idea}"
+    selected_model = AVAILABLE_MODELS[model]
+    actual_model_used = model
+    
+    print(f"🎯 Trying model: {selected_model}")
+    
+    # Try the selected model first
+    raw_prompts = await try_api_call(selected_model, system_prompt, user_message, headers)
+    
+    # If selected model fails, try fallback model
+    if raw_prompts is None and model != DEFAULT_FALLBACK_MODEL:
+        print(f"🔄 Falling back to {DEFAULT_FALLBACK_MODEL}")
+        fallback_model_path = AVAILABLE_MODELS[DEFAULT_FALLBACK_MODEL]
+        raw_prompts = await try_api_call(fallback_model_path, system_prompt, user_message, headers)
+        actual_model_used = DEFAULT_FALLBACK_MODEL
+    
+    # If both models fail, show user prompt and error
+    if raw_prompts is None:
+        error_message = (
+            f"⚠️ **The Muse choked on silence** - All models failed to respond.\n\n"
+            f"**Your prompt was:** `{idea}`\n"
+            f"**Count:** {count}\n"
+            f"**Model attempted:** {model}"
         )
+        if model != DEFAULT_FALLBACK_MODEL:
+            error_message += f"\n**Fallback attempted:** {DEFAULT_FALLBACK_MODEL}"
         
-        print("🧠 STATUS CODE:", response.status_code)
-        print("🧠 HEADERS:", response.headers)
-        print("🔍 RAW RESPONSE:", repr(response.text))
-        
-        if response.status_code != 200:
-            error_msg = f"API call failed with status {response.status_code}"
-            if response.status_code == 403:
-                error_msg += f" - The {model} model may be unavailable. Try a different model."
-            raise Exception(error_msg)
-        
-        json_data = response.json()
-        if "choices" not in json_data:
-            raise Exception("No 'choices' in response.")
-        
-        raw_prompts = json_data["choices"][0]["message"]["content"].strip()
-        if not raw_prompts:
-            raise Exception("Empty prompt returned.")
-        
+        await interaction.followup.send(error_message)
+        return
+    
+    try:
         # Split prompts by newlines and clean them
         prompts = [p.strip() for p in raw_prompts.split('\n') if p.strip()]
         
@@ -124,7 +155,10 @@ async def minx_muse(
                 mj_suffix = mjparameters
         
         # Format response with model info
-        model_info = f"*Generated using {model}*\n\n"
+        model_info = f"*Generated using {actual_model_used}*"
+        if actual_model_used != model:
+            model_info += f" *(fallback from {model})*"
+        model_info += "\n\n"
         
         if len(prompts) == 1:
             final_message = f"**🎨 Generated Prompt:**\n{model_info}```{prompts[0]}{mj_suffix}```"
@@ -157,10 +191,16 @@ async def minx_muse(
                 await interaction.channel.send(msg)
         else:
             await interaction.followup.send(final_message)
-        
+            
     except Exception as e:
-        print("💥 ERROR:", e)
-        await interaction.followup.send(f"⚠️ The Muse choked on silence. Error: {str(e)}")
+        print("💥 PROCESSING ERROR:", e)
+        error_message = (
+            f"⚠️ **Error processing the response** - {str(e)}\n\n"
+            f"**Your prompt was:** `{idea}`\n"
+            f"**Count:** {count}\n"
+            f"**Model used:** {actual_model_used}"
+        )
+        await interaction.followup.send(error_message)
 
 # Add autocomplete for model selection
 @minx_muse.autocomplete('model')
