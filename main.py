@@ -208,10 +208,29 @@ async def model_autocomplete(
     interaction: discord.Interaction,
     current: str,
 ) -> list[discord.app_commands.Choice[str]]:
-    return [
-        discord.app_commands.Choice(name=f"Gemma 3 27B (Balanced) - Default", value="gemma-3-27b"),
-        discord.app_commands.Choice(name=f"Qwen 2.5 72B (Powerful)", value="qwen-2.5-72b"),
-        discord.app_commands.Choice(name=f"Llama 4 Maverick (Creative)", value="llama-4-maverick")
-    ]
+    choices = []
+    for key in AVAILABLE_MODELS.keys():
+        if current.lower() in key.lower():
+            # Create friendly display names
+            if key == "gemma-3-27b":
+                name = "Gemma 3 27B (Balanced) - Default"
+            elif key == "qwen-2.5-72b":
+                name = "Qwen 2.5 72B (Powerful)"
+            elif key == "llama-4-maverick":
+                name = "Llama 4 Maverick (Creative)"
+            else:
+                name = key
+            
+            choices.append(discord.app_commands.Choice(name=name, value=key))
+    
+    # If no matches, return all options
+    if not choices:
+        choices = [
+            discord.app_commands.Choice(name="Gemma 3 27B (Balanced) - Default", value="gemma-3-27b"),
+            discord.app_commands.Choice(name="Qwen 2.5 72B (Powerful)", value="qwen-2.5-72b"),
+            discord.app_commands.Choice(name="Llama 4 Maverick (Creative)", value="llama-4-maverick")
+        ]
+    
+    return choices
 
 client.run(TOKEN)
